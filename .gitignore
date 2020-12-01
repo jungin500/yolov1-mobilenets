@@ -286,4 +286,9 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+# Checkpoints and labes
+label.names
+.annotations/
+.checkpoints/
+
 # End of https://www.toptal.com/developers/gitignore/api/pycharm,windows,linux,python
