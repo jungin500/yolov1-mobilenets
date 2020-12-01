@@ -290,5 +290,6 @@ $RECYCLE.BIN/
 label.names
 .annotations/
 .checkpoints/
+.logs/
 
 # End of https://www.toptal.com/developers/gitignore/api/pycharm,windows,linux,python

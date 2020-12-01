@@ -1,5 +1,6 @@
 import argparse
 import sys
+import time
 
 def generate_yolov1_dataloader(grid_size, class_size, batch_size):
     dataset_ls = tf.data.Dataset.list_files('.annotations/*.anot')
@@ -59,7 +60,9 @@ def generate_yolov1_dataloader(grid_size, class_size, batch_size):
 
     voc2012_yolo_ds = dataset_ls.map(parse_annotation_and_image)
     voc2012_yolo_ds_batch = voc2012_yolo_ds.batch(batch_size)
-    return voc2012_yolo_ds_batch
+    voc2012_yolo_ds_batch_valid = voc2012_yolo_ds_batch.take(2)
+    voc2012_yolo_ds_batch_x = voc2012_yolo_ds_batch.skip(2)
+    return voc2012_yolo_ds_batch_x, voc2012_yolo_ds_batch_valid
 
 
 def generate_mobilenet_model(metrics, loss_function=None, verbose=False):
@@ -262,6 +265,12 @@ def generate_yolov1_loss():
 
     return loss
 
+def tf_v1_compat_memory_management():
+    # Memory Pre-configuration
+    config = tf.compat.v1.ConfigProto(gpu_options=tf.compat.v1.GPUOptions(per_process_gpu_memory_fraction=0.9))
+    config.gpu_options.allow_growth = True
+    session = tf.compat.v1.Session(config=config)
+    tf.compat.v1.keras.backend.set_session(session)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -281,6 +290,7 @@ if __name__ == '__main__':
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
     print("Begin TF Library Load")
     import tensorflow as tf
+    tf_v1_compat_memory_management()
 
     print("End TF Library Load")
 
@@ -294,21 +304,36 @@ if __name__ == '__main__':
 
     print("Model Init")
     loss_function = generate_yolov1_loss()
-    dataloader = generate_yolov1_dataloader(grid_size=7, class_size=20, batch_size=args.batch_size)
+    dataloader, dataloader_valid = generate_yolov1_dataloader(grid_size=7, class_size=20, batch_size=args.batch_size)
     model = generate_mobilenet_model([], loss_function, args.verbose)
     print("Done Model Init")
 
     # model.summary()
 
+    def lr_scheduler(epoch, lr):
+        # return lr * tf.math.exp(-0.1)
+        return lr * tf.math.exp(-0.05)
+
     history = model.fit(
-        dataloader,
+        x=dataloader,
+        validation_data=dataloader_valid,
         epochs=600,
+        shuffle=True,
         callbacks=[
             tf.keras.callbacks.ModelCheckpoint(
-                filepath='.checkpoints/weights.epoch{epoch:02d}-loss{loss:.2f}.hdf5',
-                save_best_only=True,
+                filepath='S:\\.checkpoints\\weights.epoch{epoch:02d}-loss{loss:.2f}.ckpt',
                 save_weights_only=True,
-                monitor='loss'
+                monitor='val_loss',
+                save_best_only=True,
+                verbose=1
             ),
+            tf.keras.callbacks.LearningRateScheduler(
+                lr_scheduler, verbose=1
+            ),
+            tf.keras.callbacks.TensorBoard(
+                log_dir=f'.logs/run-{time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime(time.time()))}',
+                update_freq=8,
+                profile_batch=0,
+            )
         ]
     )
